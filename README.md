@@ -1,6 +1,6 @@
 # ARC - JS - Adaptive Replacement Cache
 
-This repository now contains a pure JavaScript example of the IBM Adaptive Replacement Cache (ARC) algorithm, plus a small browser demo that shows the cache evolving step by step.
+This project is a plain JavaScript implementation of IBM's Adaptive Replacement Cache (ARC), along with a small browser demo that lets you follow the cache state step by step.
 
 ARC was introduced by researchers at IBM Almaden Research Center as a scan-resistant alternative to plain LRU caches. Instead of betting only on recency or only on frequency, ARC adapts between the two while the workload is running.
 
@@ -106,6 +106,9 @@ This version favors clarity over optimization.
 
 ## References
 
-- Adaptive replacement cache
-- IBM Almaden Research Center ARC paper and related notes
-- LRU vs ARC comparisons and teaching material
+- [Adaptive Replacement Cache in Python (Python recipe)](http://code.activestate.com/recipes/576532/)
+- [Adaptive replacement cache](http://en.wikipedia.org/wiki/Adaptive_replacement_cache)
+- [LRU vs ARC](http://u.cs.biu.ac.il/~wiseman/2os/2os/os2.pdf)
+- [C ARC Implementation](https://github.com/wereHamster)
+- [MurmurHash fast hashing](http://en.wikipedia.org/wiki/MurmurHash)
+- [Optimized JavaScript implementation of MurmurHash](https://github.com/garycourt/murmurhash-js)
