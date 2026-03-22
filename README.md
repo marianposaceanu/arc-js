@@ -1,35 +1,43 @@
 # ARC - JS - Adaptive Replacement Cache
 
-This project is a plain JavaScript implementation of IBM's Adaptive Replacement Cache (ARC), along with a small browser demo that lets you follow the cache state step by step.
+This project is a plain JavaScript implementation of IBM's Adaptive Replacement Cache (ARC), plus a small browser demo that lets you inspect the cache state step by step.
 
-ARC was introduced by researchers at IBM Almaden Research Center as a scan-resistant alternative to plain LRU caches. Instead of betting only on recency or only on frequency, ARC adapts between the two while the workload is running.
+ARC works by keeping two real LRU lists and two ghost-history lists. New items enter `T1`, which represents recency. If an item is requested again, it moves to `T2`, which represents frequency. When items are evicted from those real cache lists, ARC keeps their keys in `B1` and `B2` so it can remember what it threw away.
 
-## What is in this repo
+That history is what makes ARC adaptive. A hit in `B1` means the cache likely needs more room for recent items, so ARC increases `p`, the target size of `T1`. A hit in `B2` means frequent items need more protection, so ARC decreases `p`. The replacement step then uses `p` to decide whether the next eviction should come from `T1` or `T2`.
 
-- `js/main.js` implements the cache in plain JavaScript.
-- `index.html` renders a browser demo with a sample request trace.
-- `css/main.css` styles the walkthrough page.
+## In this repo
 
-There is no build step. Open `index.html` directly in a browser to see the example.
+- `js/main.js` contains the readable ARC implementation and the demo logic.
+- `index.html` renders the browser walkthrough.
+- `css/main.css` styles the demo page.
 
-## How ARC works
+There is no build step. Open `index.html` directly in a browser to run the example.
 
-ARC keeps four LRU lists:
+## ARC at a glance
 
-- `T1`: real cache entries seen recently, usually only once.
-- `T2`: real cache entries seen often, meaning they were accessed again.
-- `B1`: ghost entries for keys that were evicted from `T1`.
-- `B2`: ghost entries for keys that were evicted from `T2`.
+ARC manages four LRU lists:
 
-The ghost lists store keys only, not cached values. They act as memory for what the cache recently threw away.
+- `T1` - real cache entries seen recently, usually only once.
+- `T2` - real cache entries that have been seen again and now count as frequent.
+- `B1` - ghost entries for keys evicted from `T1`.
+- `B2` - ghost entries for keys evicted from `T2`.
 
-ARC also tracks a tuning value named `p`:
+The ghost lists store keys only, not values. They are not part of the real cache; they are just memory.
+
+ARC also maintains a tuning parameter named `p`:
 
 - `p` is the target size for `T1`.
-- When `B1` gets a hit, ARC increases `p`, giving more room to recent items.
-- When `B2` gets a hit, ARC decreases `p`, giving more room to frequent items.
+- larger `p` means ARC is leaning toward recency.
+- smaller `p` means ARC is leaning toward frequency.
 
-That one feedback loop is what makes ARC adaptive.
+## What happens on each request
+
+1. If the key is in `T1`, it is a hit and gets promoted to `T2`.
+2. If the key is in `T2`, it is a hit and becomes most-recent in `T2`.
+3. If the key is in `B1`, ARC increases `p`, runs replacement, and restores the key into `T2`.
+4. If the key is in `B2`, ARC decreases `p`, runs replacement, and restores the key into `T2`.
+5. If the key is brand new, ARC inserts it into `T1` and evicts something if needed.
 
 ## ASCII sequence diagram
 
@@ -77,35 +85,22 @@ Client          ARC                  T1/T2                  B1/B2
   |<-------------| return value        |                      |
 ```
 
-Reading it left to right:
+Short version:
 
-- `T1` hit: promote to `T2`.
-- `T2` hit: stay in `T2` and become most recent again.
-- `B1` hit: increase `p`, then bring the key back through `T2`.
-- `B2` hit: decrease `p`, then bring the key back through `T2`.
-- Brand-new miss: insert into `T1`.
+- `T1` hit -> promote to `T2`
+- `T2` hit -> refresh in `T2`
+- `B1` hit -> increase `p`
+- `B2` hit -> decrease `p`
+- cold miss -> insert into `T1`
 
-## Request lifecycle
+## How replacement works
 
-For each requested key, the implementation follows the ARC paper closely:
+When ARC needs space, it does not always evict from the same list.
 
-1. If the key is already in `T1` or `T2`, it is a cache hit.
-2. A hit in `T1` promotes the item into `T2`.
-3. A hit in `T2` keeps the item in `T2` and refreshes its recency.
-4. If the key is found in `B1`, ARC treats that as evidence that recency matters more, increases `p`, runs replacement, and restores the item into `T2`.
-5. If the key is found in `B2`, ARC treats that as evidence that frequency matters more, decreases `p`, runs replacement, and restores the item into `T2`.
-6. If the key is brand new, ARC inserts it into `T1` and may evict older entries according to the `replace()` rule.
+- If `T1` is larger than the current target `p`, ARC evicts from `T1` into `B1`.
+- Otherwise, ARC evicts from `T2` into `B2`.
 
-## The `replace()` decision
-
-When ARC needs space, it does not always evict from the same place:
-
-- If `T1` is bigger than the current target `p`, ARC evicts from `T1` into `B1`.
-- Otherwise it evicts from `T2` into `B2`.
-- A `B2` hit makes eviction from `T1` more likely next time.
-- A `B1` hit makes eviction from `T2` more likely next time.
-
-This lets ARC shift between recency-heavy and frequency-heavy behavior without a fixed policy knob.
+This is the key balancing rule. `p` tells ARC how much room to reserve for recent items, and the ghost hits keep moving that target up or down.
 
 ## JavaScript API
 
@@ -124,39 +119,35 @@ console.log(cache.snapshot());
 ### Methods
 
 - `new AdaptiveReplacementCache(capacity)` creates a cache with a fixed number of real slots.
-- `cache.access(key, value)` is the best method for simulating page requests. It records hits and misses and admits a missing value into the cache.
-- `cache.get(key)` reads from the real cache only. It promotes hits but does not load misses.
+- `cache.access(key, value)` simulates a request, records hits and misses, and admits missing values.
+- `cache.get(key)` reads from the real cache only; hits are promoted, misses are not loaded.
 - `cache.set(key, value)` inserts or updates an item using ARC admission rules without changing hit or miss counters.
 - `cache.snapshot()` returns a plain object with `p`, hit statistics, and the contents of `T1`, `T2`, `B1`, and `B2`.
 
 ## Demo walkthrough
 
-The browser page runs this request trace against a cache of size `4`:
+The browser demo runs this request trace against a cache of size `4`:
 
 ```text
 A B C D A B E A B C D E F A E F
 ```
 
-For every request the demo shows:
+For each request, the demo shows:
 
-- whether the access was a hit, a cold miss, or a ghost miss,
-- the new value of `p`,
+- whether it was a hit, a cold miss, or a ghost miss,
+- the current value of `p`,
 - the current contents of `T1`, `T2`, `B1`, and `B2`,
 - and the action ARC took internally.
 
-This makes it easier to see the difference between:
-
-- items that are merely recent,
-- items that become frequent,
-- and items whose eviction teaches ARC how to rebalance itself.
+That makes it easier to see the difference between items that are merely recent, items that become frequent, and evictions that teach ARC how to rebalance itself.
 
 ## Design notes
 
 This version favors clarity over optimization.
 
-- The four ARC lists are modeled as plain JavaScript arrays so the state transitions stay easy to read.
+- The four ARC lists are modeled as plain JavaScript arrays so the state transitions are easy to follow.
 - Real cache values live in a small `Map`, while the ghost lists keep keys only.
-- That makes the implementation simpler to study, even though it is not tuned for large-scale performance.
+- The goal is to make the algorithm readable, not to optimize for large workloads.
 
 ## References
 
