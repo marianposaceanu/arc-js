@@ -31,6 +31,60 @@ ARC also tracks a tuning value named `p`:
 
 That one feedback loop is what makes ARC adaptive.
 
+## ASCII sequence diagram
+
+```text
+Client          ARC                  T1/T2                  B1/B2
+  |              |                     |                      |
+  | request(key) |                     |                      |
+  |------------->|                     |                      |
+  |              | check T1/T2         |                      |
+  |              |-------------------->|                      |
+  |              |<--------------------| hit?                 |
+  |              |                     |                      |
+  |              | if key in T1        | move key T1 -> T2    |
+  |              |-------------------->|                      |
+  |<-------------| return value        |                      |
+  |              |                     |                      |
+  |              | if key in T2        | refresh in T2        |
+  |              |-------------------->|                      |
+  |<-------------| return value        |                      |
+  |              |                     |                      |
+  |              | if miss in T1/T2    |                      |
+  |              | check B1/B2         |--------------------->|
+  |              |<-------------------------------------------| ghost hit?
+  |              |                     |                      |
+  |              | if key in B1        |                      | recency won
+  |              | increase p          |                      |
+  |              | replace()           | evict to B1 or B2    |
+  |              |-------------------->|--------------------->|
+  |              | move key into T2    |                      |
+  |              |-------------------->|                      |
+  |<-------------| return value        |                      |
+  |              |                     |                      |
+  |              | if key in B2        |                      | frequency won
+  |              | decrease p          |                      |
+  |              | replace()           | evict to B1 or B2    |
+  |              |-------------------->|--------------------->|
+  |              | move key into T2    |                      |
+  |              |-------------------->|                      |
+  |<-------------| return value        |                      |
+  |              |                     |                      |
+  |              | if brand-new key    | maybe replace()      |
+  |              |-------------------->|--------------------->|
+  |              | insert key into T1  |                      |
+  |              |-------------------->|                      |
+  |<-------------| return value        |                      |
+```
+
+Reading it left to right:
+
+- `T1` hit: promote to `T2`.
+- `T2` hit: stay in `T2` and become most recent again.
+- `B1` hit: increase `p`, then bring the key back through `T2`.
+- `B2` hit: decrease `p`, then bring the key back through `T2`.
+- Brand-new miss: insert into `T1`.
+
 ## Request lifecycle
 
 For each requested key, the implementation follows the ARC paper closely:
